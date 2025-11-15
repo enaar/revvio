@@ -86,7 +86,7 @@ async function getPostgresURL(): Promise<string> {
   if (dbChoice.toLowerCase() === 'l') {
     console.log('Setting up local Postgres instance with Docker...');
     await setupLocalPostgres();
-    return 'postgres://postgres:postgres@localhost:54322/postgres';
+    return 'postgres://postgres:postgres@localhost:54922/postgres';
   } else {
     console.log(
       'You can find Postgres databases at: https://vercel.com/marketplace?category=databases'
@@ -121,7 +121,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "54322:5432"
+      - "54922:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
