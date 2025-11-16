@@ -66,10 +66,20 @@ Three middleware patterns for Server Actions in `lib/auth/middleware.ts`:
 - `activityLogs` - Audit trail for user actions
 - `invitations` - Pending team invitations
 
+**Revvio Tables** (`lib/db/schema.ts`)
+- `businessProfiles` - Business information with review platform URLs (Google, Facebook, Yelp)
+- `customers` - Customer contact information linked to businesses
+- `reviewRequests` - Review request campaigns with tracking and status (pending/sent/failed/clicked/reviewed)
+- `subscriptions` - User subscription plans with usage tracking and monthly limits
+
 **Relationships**
 - Users can belong to multiple teams via `teamMembers`
 - Each team has multiple members with roles (owner/member)
 - Activity logs track all user actions per team
+- Users can have multiple business profiles and subscriptions
+- Business profiles have multiple customers and review requests
+- Customers can have multiple review requests
+- Review requests track engagement status (sent → clicked → reviewed)
 - Drizzle relations defined at bottom of schema file
 
 **Key Queries** (`lib/db/queries.ts`)
@@ -99,13 +109,24 @@ Three middleware patterns for Server Actions in `lib/auth/middleware.ts`:
 **Route Groups**
 - `app/(login)/*` - Public auth pages (sign-in, sign-up)
 - `app/(dashboard)/*` - Protected dashboard pages
+- `app/(dashboard)/onboarding/*` - Multi-step onboarding flow for new businesses
 - `app/api/*` - API routes for Stripe and data endpoints
 
 **Server Actions Pattern**
 - All mutations use Server Actions (marked with `'use server'`)
 - Actions in `app/(login)/actions.ts` handle auth, account, and team operations
+- Actions in `app/(dashboard)/onboarding/actions.ts` handle business profile creation
 - Each action logs activity via `logActivity()` helper function
 - Actions return `ActionState` type with error/success messages
+
+**Onboarding Flow** (`app/(dashboard)/onboarding/page.tsx`)
+- 3-step wizard for new business setup using React Hook Form
+- Step 1: Basic business information (name, phone, email)
+- Step 2: Review platform links (Google required, Facebook/Yelp optional) with tooltips and help dialogs
+- Step 3: Success page with quick actions
+- Validation schemas in `lib/validations/business.ts`
+- Uses shadcn/ui components: Card, Input, Label, Progress, Tooltip, Dialog
+- Server action `createBusinessProfile()` saves data to `businessProfiles` table
 
 **Data Fetching**
 - Uses SWR for client-side data fetching with SSR fallback
@@ -138,11 +159,34 @@ All user actions are logged to `activityLogs` table via `logActivity()` helper i
 ## Environment Variables
 
 Required variables (see `.env.example`):
+
+**Database**
 - `POSTGRES_URL` - PostgreSQL connection string
+
+**Authentication**
 - `AUTH_SECRET` - JWT signing secret (generate with `openssl rand -base64 32`)
-- `BASE_URL` - Application URL (http://localhost:3000 for dev)
+
+**Stripe**
 - `STRIPE_SECRET_KEY` - Stripe secret key
 - `STRIPE_WEBHOOK_SECRET` - Stripe webhook signing secret
+
+**Application**
+- `BASE_URL` - Application URL (http://localhost:3000 for dev)
+- `NEXT_PUBLIC_APP_URL` - Public-facing URL for tracking links
+
+**Twilio (SMS)**
+- `TWILIO_ACCOUNT_SID` - Twilio account SID
+- `TWILIO_AUTH_TOKEN` - Twilio auth token
+- `TWILIO_PHONE_NUMBER` - Twilio phone number for sending SMS
+
+**SendGrid (Email)**
+- `SENDGRID_API_KEY` - SendGrid API key
+- `SENDGRID_FROM_EMAIL` - Sender email address
+
+**Configuration Management**
+- All environment variables are validated at runtime using Zod in `lib/config.ts`
+- Import validated config: `import { config } from '@/lib/config'`
+- Application fails fast on startup if required variables are missing or invalid
 
 ## Next.js Configuration
 
@@ -152,3 +196,5 @@ Experimental features enabled in `next.config.ts`:
 - `nodeMiddleware: true` - Node.js middleware support
 
 Development uses Turbopack for faster builds.
+
+Always update Claude.MD after a change has been made
