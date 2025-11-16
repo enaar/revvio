@@ -86,6 +86,7 @@ Three middleware patterns for Server Actions in `lib/auth/middleware.ts`:
 - `getUser()` - Gets current authenticated user from session cookie
 - `getTeamForUser()` - Fetches user's team with all members (uses Drizzle relational queries)
 - `getActivityLogs()` - Returns last 10 activity logs for current user
+- `getBusinessProfile()` - Fetches business profile for current authenticated user
 
 ### Stripe Integration
 
@@ -126,12 +127,20 @@ Three middleware patterns for Server Actions in `lib/auth/middleware.ts`:
 - Step 3: Success page with quick actions
 - Validation schemas in `lib/validations/business.ts`
 - Uses shadcn/ui components: Card, Input, Label, Progress, Tooltip, Dialog
-- Server action `createBusinessProfile()` saves data to `businessProfiles` table
+- Server actions in `app/(dashboard)/onboarding/actions.ts`:
+  - `createBusinessProfile()` - Creates new business profile
+  - `updateBusinessProfile()` - Updates existing business profile
+- New users automatically redirected to `/onboarding` after sign-up
+- Dashboard layout checks for business profile and redirects to onboarding if missing
+- Business settings page at `/dashboard/business` allows editing profile after onboarding
 
 **Data Fetching**
 - Uses SWR for client-side data fetching with SSR fallback
 - Initial data preloaded in root layout via SWRConfig fallback (`app/layout.tsx:30-37`)
-- API routes at `/api/user` and `/api/team` provide fresh data
+- API routes provide fresh data:
+  - `/api/user` - Current user data
+  - `/api/team` - Team data with members
+  - `/api/business-profile` - Business profile data
 
 ### Activity Logging
 
