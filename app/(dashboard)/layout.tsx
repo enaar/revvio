@@ -15,6 +15,7 @@ import { signOut } from '@/app/(login)/actions';
 import { useRouter, usePathname } from 'next/navigation';
 import { User, BusinessProfile } from '@/lib/db/schema';
 import useSWR, { mutate } from 'swr';
+import { Toaster } from 'sonner';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -100,7 +101,7 @@ function OnboardingCheck({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: businessProfile, isLoading } = useSWR<BusinessProfile | null>(
-    '/api/business-profile',
+    '/api/business/profile',
     fetcher
   );
 
@@ -136,6 +137,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <section className="flex flex-col min-h-screen">
       <Header />
       <OnboardingCheck>{children}</OnboardingCheck>
+      <Toaster />
     </section>
   );
 }

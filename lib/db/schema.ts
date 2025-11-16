@@ -5,6 +5,7 @@ import {
   text,
   timestamp,
   integer,
+  boolean,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -79,6 +80,7 @@ export const businessProfiles = pgTable('business_profiles', {
   yelpReviewUrl: text('yelp_review_url'),
   phone: varchar('phone', { length: 20 }),
   email: varchar('email', { length: 255 }),
+  onboardingCompleted: boolean('onboarding_completed').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

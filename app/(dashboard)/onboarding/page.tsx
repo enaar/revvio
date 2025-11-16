@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -16,23 +16,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
   Loader2,
   CheckCircle2,
-  HelpCircle,
   ArrowRight,
   ArrowLeft,
 } from 'lucide-react';
@@ -40,21 +25,51 @@ import {
   onboardingSchema,
   type OnboardingFormData
 } from '@/lib/validations/business';
-import { createBusinessProfile } from './actions';
+import { ReviewLinkHelpModal } from '@/components/onboarding/review-link-help-modal';
+import { toast } from 'sonner';
+
+// TypeScript types for API response
+interface ApiSuccessResponse {
+  success: true;
+  data: {
+    id: number;
+    userId: number;
+    businessName: string;
+    phone: string;
+    email: string;
+    googleReviewUrl: string | null;
+    facebookReviewUrl: string | null;
+    yelpReviewUrl: string | null;
+    onboardingCompleted: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  message: string;
+}
+
+interface ApiErrorResponse {
+  success: false;
+  error: string;
+  details?: string[];
+}
+
+type ApiResponse = ApiSuccessResponse | ApiErrorResponse;
 
 type FormData = OnboardingFormData;
+
+const FORM_STORAGE_KEY = 'onboarding-form-data';
 
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const {
     register,
     handleSubmit,
     trigger,
-    getValues,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(onboardingSchema),
@@ -63,6 +78,37 @@ export default function OnboardingPage() {
 
   const totalSteps = 3;
   const progress = (currentStep / totalSteps) * 100;
+
+  // Watch all form values for auto-save
+  const formValues = watch();
+
+  // Load saved form data from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedData = localStorage.getItem(FORM_STORAGE_KEY);
+      if (savedData) {
+        const parsed = JSON.parse(savedData);
+        // Set each field value
+        Object.entries(parsed).forEach(([key, value]) => {
+          setValue(key as keyof FormData, value as any);
+        });
+        toast.info('Form data restored from previous session');
+      }
+    } catch (error) {
+      console.error('Error loading saved form data:', error);
+    }
+  }, [setValue]);
+
+  // Save form data to localStorage after each step
+  useEffect(() => {
+    if (Object.keys(formValues).length > 0) {
+      try {
+        localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(formValues));
+      } catch (error) {
+        console.error('Error saving form data:', error);
+      }
+    }
+  }, [formValues]);
 
   const handleNext = async () => {
     let isValid = false;
@@ -83,36 +129,82 @@ export default function OnboardingPage() {
   const handleBack = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
-      setError(null);
     }
   };
 
   const handleSkipStep2 = () => {
+    // Set empty values for optional fields when skipping
+    setValue('googleReviewUrl', '');
+    setValue('facebookReviewUrl', '');
+    setValue('yelpReviewUrl', '');
     setCurrentStep(3);
   };
 
   const onSubmit = async (data: FormData) => {
+    // Prevent multiple submissions
+    if (isSubmitting) return;
+
     setIsSubmitting(true);
-    setError(null);
 
     try {
-      const formData = new FormData();
-      Object.entries(data).forEach(([key, value]) => {
-        formData.append(key, value as string);
+      // Call API endpoint
+      const response = await fetch('/api/business/profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
       });
 
-      const result = await createBusinessProfile({}, formData);
+      const result: ApiResponse = await response.json();
 
-      if (result?.error) {
-        setError(result.error);
+      // Check if the result indicates an error
+      if (result.success === false) {
+        // TypeScript now knows result is ApiErrorResponse
+        if (result.details) {
+          // Show validation errors
+          toast.error('Validation Error', {
+            description: result.details.join(', '),
+          });
+        } else {
+          toast.error('Error', {
+            description: result.error,
+          });
+        }
         setIsSubmitting(false);
-      } else {
-        // Move to success step
-        setCurrentStep(3);
-        setIsSubmitting(false);
+        return;
       }
-    } catch (err) {
-      setError('An unexpected error occurred. Please try again.');
+
+      // If HTTP response was not OK (defensive check)
+      if (!response.ok) {
+        toast.error('Error', {
+          description: 'Failed to save business profile',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Success!
+      toast.success('Success!', {
+        description: 'Your business profile has been created successfully.',
+      });
+
+      // Clear localStorage
+      localStorage.removeItem(FORM_STORAGE_KEY);
+
+      // Move to success step
+      setCurrentStep(3);
+      setIsSubmitting(false);
+
+      // Redirect to dashboard after 2 seconds
+      setTimeout(() => {
+        router.push('/dashboard');
+      }, 2000);
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      toast.error('Network Error', {
+        description: 'Failed to connect to the server. Please try again.',
+      });
       setIsSubmitting(false);
     }
   };
@@ -167,6 +259,7 @@ export default function OnboardingPage() {
                     placeholder="Enter your business name"
                     {...register('businessName')}
                     className={errors.businessName ? 'border-red-500' : ''}
+                    disabled={isSubmitting}
                   />
                   {errors.businessName && (
                     <p className="text-sm text-red-500">
@@ -185,6 +278,7 @@ export default function OnboardingPage() {
                     placeholder="(555) 123-4567"
                     {...register('phone')}
                     className={errors.phone ? 'border-red-500' : ''}
+                    disabled={isSubmitting}
                   />
                   {errors.phone && (
                     <p className="text-sm text-red-500">
@@ -203,6 +297,7 @@ export default function OnboardingPage() {
                     placeholder="business@example.com"
                     {...register('email')}
                     className={errors.email ? 'border-red-500' : ''}
+                    disabled={isSubmitting}
                   />
                   {errors.email && (
                     <p className="text-sm text-red-500">
@@ -218,7 +313,7 @@ export default function OnboardingPage() {
               <div className="space-y-6">
                 {/* Google Review Link */}
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <svg className="w-5 h-5" viewBox="0 0 24 24">
                       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                       <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -228,45 +323,7 @@ export default function OnboardingPage() {
                     <Label htmlFor="googleReviewUrl">
                       Google Review Link <span className="text-red-500">*</span>
                     </Label>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p>Find this by searching your business on Google Maps, click "Share" &gt; "Embed a map" or get the review link</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button type="button" variant="ghost" size="sm" className="h-6 px-2">
-                          <HelpCircle className="w-3 h-3 mr-1" />
-                          Guide
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                          <DialogTitle>How to Find Your Google Review Link</DialogTitle>
-                          <DialogDescription>
-                            Follow these steps to get your Google review link:
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <ol className="list-decimal list-inside space-y-3 text-sm">
-                            <li>Search for your business on Google Maps</li>
-                            <li>Click on your business listing</li>
-                            <li>Scroll down and click on the reviews section</li>
-                            <li>Click "Share" or look for the share icon</li>
-                            <li>Copy the link that appears</li>
-                            <li>Alternatively, click "Write a review" and copy that URL</li>
-                          </ol>
-                          <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
-                            <strong>Example:</strong> https://search.google.com/local/writereview?placeid=YOUR_PLACE_ID
-                          </p>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
+                    <ReviewLinkHelpModal platform="google" />
                   </div>
                   <Input
                     id="googleReviewUrl"
@@ -274,6 +331,7 @@ export default function OnboardingPage() {
                     placeholder="https://g.page/your-business/review"
                     {...register('googleReviewUrl')}
                     className={errors.googleReviewUrl ? 'border-red-500' : ''}
+                    disabled={isSubmitting}
                   />
                   {errors.googleReviewUrl && (
                     <p className="text-sm text-red-500">
@@ -284,23 +342,14 @@ export default function OnboardingPage() {
 
                 {/* Facebook Review Link */}
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <svg className="w-5 h-5" viewBox="0 0 24 24">
                       <path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
                     </svg>
                     <Label htmlFor="facebookReviewUrl">
                       Facebook Review Link <span className="text-gray-500">(Optional)</span>
                     </Label>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p>Your Facebook page URL + /reviews (e.g., facebook.com/yourbusiness/reviews)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <ReviewLinkHelpModal platform="facebook" />
                   </div>
                   <Input
                     id="facebookReviewUrl"
@@ -308,6 +357,7 @@ export default function OnboardingPage() {
                     placeholder="https://facebook.com/yourbusiness/reviews"
                     {...register('facebookReviewUrl')}
                     className={errors.facebookReviewUrl ? 'border-red-500' : ''}
+                    disabled={isSubmitting}
                   />
                   {errors.facebookReviewUrl && (
                     <p className="text-sm text-red-500">
@@ -318,23 +368,14 @@ export default function OnboardingPage() {
 
                 {/* Yelp Review Link */}
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <svg className="w-5 h-5" viewBox="0 0 24 24">
                       <path fill="#D32323" d="M12.271 17.221c.07.361.171.589.292.822.07.121.171.211.281.292.111.07.232.121.363.141.131.03.262.03.393 0 .131-.02.262-.07.383-.141l4.747-2.663c.323-.181.525-.424.595-.747.07-.323-.02-.686-.252-.999-.232-.313-.565-.535-.938-.666l-4.818-1.575c-.131-.04-.262-.06-.393-.05-.131 0-.262.03-.383.09-.121.06-.232.141-.323.252-.09.111-.161.242-.201.383-.04.141-.05.292-.03.433.02.141.07.282.151.413l.934 4.015zm-7.95-3.545c.363.07.595.171.828.292.121.07.211.171.292.281.07.111.121.232.141.363.03.131.03.262 0 .393-.02.131-.07.262-.141.383l-2.663 4.747c-.181.323-.424.525-.747.595-.323.07-.686-.02-.999-.252-.313-.232-.535-.565-.666-.938L.791 14.722c-.04-.131-.06-.262-.05-.393 0-.131.03-.262.09-.383.06-.121.141-.232.252-.323.111-.09.242-.161.383-.201.141-.04.292-.05.433-.03.141.02.282.07.413.151l3.009.933zm16.364-2.958c-.363-.07-.595-.171-.828-.292-.121-.07-.211-.171-.292-.281-.07-.111-.121-.232-.141-.363-.03-.131-.03-.262 0-.393.02-.131.07-.262.141-.383l2.663-4.747c.181-.323.424-.525.747-.595.323-.07.686.02.999.252.313.232.535.565.666.938l1.575 4.818c.04.131.06.262.05.393 0 .131-.03.262-.09.383-.06.121-.141.232-.252.323-.111.09-.242.161-.383.201-.141.04-.292.05-.433.03-.141-.02-.282-.07-.413-.151l-4.009-.933zm-8.414-9.446c-.07-.363-.171-.595-.292-.828-.07-.121-.171-.211-.281-.292-.111-.07-.232-.121-.363-.141-.131-.03-.262-.03-.393 0-.131.02-.262.07-.383.141l-4.747 2.663c-.323.181-.525.424-.595.747-.07.323.02.686.252.999.232.313.565.535.938.666l4.818 1.575c.131.04.262.06.393.05.131 0 .262-.03.383-.09.121-.06.232-.141.323-.252.09-.111.161-.242.201-.383.04-.141.05-.292.03-.433-.02-.141-.07-.282-.151-.413l-.932-4.009zm1.717 4.545c-.424-.141-.848-.101-1.232.08-.383.181-.686.504-.858.938-.171.433-.171.908-.01 1.332.161.424.464.757.878.958.414.201.878.242 1.322.141.444-.101.828-.353 1.09-.717.262-.363.383-.797.343-1.231-.04-.433-.242-.827-.565-1.13-.323-.303-.717-.474-1.13-.494-.141-.01-.282 0-.424.03.151-.03.303-.04.464-.04.424 0 .848.181 1.151.494.303.313.485.717.525 1.151.04.433-.08.868-.343 1.231-.262.363-.646.616-1.09.717-.444.101-.908.06-1.322-.141-.414-.201-.717-.535-.878-.958-.161-.424-.161-.898.01-1.332.171-.433.475-.757.858-.938.383-.181.808-.221 1.232-.08z"/>
                     </svg>
                     <Label htmlFor="yelpReviewUrl">
                       Yelp Review Link <span className="text-gray-500">(Optional)</span>
                     </Label>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p>Find your business on Yelp, click "Write a Review" and copy the URL</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <ReviewLinkHelpModal platform="yelp" />
                   </div>
                   <Input
                     id="yelpReviewUrl"
@@ -342,6 +383,7 @@ export default function OnboardingPage() {
                     placeholder="https://yelp.com/biz/your-business"
                     {...register('yelpReviewUrl')}
                     className={errors.yelpReviewUrl ? 'border-red-500' : ''}
+                    disabled={isSubmitting}
                   />
                   {errors.yelpReviewUrl && (
                     <p className="text-sm text-red-500">
@@ -423,13 +465,6 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            {/* Error Message */}
-            {error && currentStep < 3 && (
-              <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-800">{error}</p>
-              </div>
-            )}
-
             {/* Navigation Buttons */}
             {currentStep < 3 && (
               <div className="flex justify-between mt-8 pt-6 border-t">
@@ -459,6 +494,7 @@ export default function OnboardingPage() {
                     <Button
                       type="button"
                       onClick={handleNext}
+                      disabled={isSubmitting}
                       className="bg-orange-500 hover:bg-orange-600 text-white"
                     >
                       Next
@@ -473,7 +509,7 @@ export default function OnboardingPage() {
                       {isSubmitting ? (
                         <>
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Creating...
+                          Creating Profile...
                         </>
                       ) : (
                         <>

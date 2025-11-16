@@ -67,7 +67,7 @@ Three middleware patterns for Server Actions in `lib/auth/middleware.ts`:
 - `invitations` - Pending team invitations
 
 **Revvio Tables** (`lib/db/schema.ts`)
-- `businessProfiles` - Business information with review platform URLs (Google, Facebook, Yelp)
+- `businessProfiles` - Business information with review platform URLs (Google, Facebook, Yelp) and onboarding status
 - `customers` - Customer contact information linked to businesses
 - `reviewRequests` - Review request campaigns with tracking and status (pending/sent/failed/clicked/reviewed)
 - `subscriptions` - User subscription plans with usage tracking and monthly limits
@@ -111,6 +111,7 @@ Three middleware patterns for Server Actions in `lib/auth/middleware.ts`:
 - `app/(login)/*` - Public auth pages (sign-in, sign-up)
 - `app/(dashboard)/*` - Protected dashboard pages
 - `app/(dashboard)/onboarding/*` - Multi-step onboarding flow for new businesses
+- `app/(dashboard)/settings/business/*` - Business profile settings page
 - `app/api/*` - API routes for Stripe and data endpoints
 
 **Server Actions Pattern**
@@ -121,18 +122,45 @@ Three middleware patterns for Server Actions in `lib/auth/middleware.ts`:
 - Actions return `ActionState` type with error/success messages
 
 **Onboarding Flow** (`app/(dashboard)/onboarding/page.tsx`)
-- 3-step wizard for new business setup using React Hook Form
+- 3-step wizard for new business setup using React Hook Form and Zod validation
 - Step 1: Basic business information (name, phone, email)
-- Step 2: Review platform links (Google required, Facebook/Yelp optional) with tooltips and help dialogs
-- Step 3: Success page with quick actions
+- Step 2: Review platform links (Google required, Facebook/Yelp optional) with tooltips and help modals
+- Step 3: Success page with next actions
+- Form submission calls POST `/api/business/profile` endpoint
+- Toast notifications (via Sonner) for success/error feedback
+- localStorage persistence for form data (auto-save and restore)
 - Validation schemas in `lib/validations/business.ts`
-- Uses shadcn/ui components: Card, Input, Label, Progress, Tooltip, Dialog
+- Uses shadcn/ui components: Card, Input, Label, Progress, Tooltip, Dialog, Button
+- Reusable `ReviewLinkHelpModal` component with platform-specific instructions
 - Server actions in `app/(dashboard)/onboarding/actions.ts`:
-  - `createBusinessProfile()` - Creates new business profile
-  - `updateBusinessProfile()` - Updates existing business profile
+  - `createBusinessProfile()` - Creates new business profile (legacy)
+  - `updateBusinessProfile()` - Updates existing business profile (legacy)
 - New users automatically redirected to `/onboarding` after sign-up
-- Dashboard layout checks for business profile and redirects to onboarding if missing
-- Business settings page at `/dashboard/business` allows editing profile after onboarding
+- Dashboard layout includes `OnboardingCheck` component that redirects to onboarding if profile missing
+- Toaster component added to dashboard layout for toast notifications
+
+**Business Settings Page** (`app/(dashboard)/settings/business/page.tsx`)
+- Single-page form for editing existing business profile (unlike multi-step onboarding)
+- Fetches existing profile via GET `/api/business/profile` on page load
+- Shows loading skeleton while fetching data
+- Pre-populates all form fields with existing business data
+- Uses React Hook Form with same validation schema from `lib/validations/business.ts`
+- Form sections:
+  - Basic Information: business name, phone, email (all required)
+  - Review Platform Links: Google (required), Facebook (optional), Yelp (optional)
+- Features:
+  - Unsaved changes detection and warning banner
+  - Browser beforeunload warning if navigating away with unsaved changes
+  - "Save Changes" button (disabled if no changes made)
+  - "Cancel" button to discard changes and reset form
+  - Displays "Last updated X time ago" using date-fns library
+  - Inline validation errors
+  - Toast notifications for success/error feedback
+  - Loading states during submission
+- Updates profile via POST `/api/business/profile` (same endpoint as onboarding)
+- Reuses `ReviewLinkHelpModal` component for platform-specific instructions
+- Responsive design for mobile and desktop
+- Error handling for network errors, 404 (redirects to onboarding), and validation errors
 
 **Data Fetching**
 - Uses SWR for client-side data fetching with SSR fallback
@@ -140,7 +168,8 @@ Three middleware patterns for Server Actions in `lib/auth/middleware.ts`:
 - API routes provide fresh data:
   - `/api/user` - Current user data
   - `/api/team` - Team data with members
-  - `/api/business-profile` - Business profile data
+  - `/api/business-profile` - Business profile data (GET only, legacy)
+  - `/api/business/profile` - Full business profile CRUD (GET, POST)
 
 ### Activity Logging
 

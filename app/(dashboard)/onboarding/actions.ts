@@ -1,12 +1,10 @@
 'use server';
 
-import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db/drizzle';
 import { businessProfiles, type NewBusinessProfile } from '@/lib/db/schema';
 import { validatedActionWithUser } from '@/lib/auth/middleware';
 import { onboardingSchema } from '@/lib/validations/business';
-import { redirect } from 'next/navigation';
 import { getBusinessProfile } from '@/lib/db/queries';
 
 export const createBusinessProfile = validatedActionWithUser(
@@ -21,6 +19,7 @@ export const createBusinessProfile = validatedActionWithUser(
         googleReviewUrl: data.googleReviewUrl,
         facebookReviewUrl: data.facebookReviewUrl || null,
         yelpReviewUrl: data.yelpReviewUrl || null,
+        onboardingCompleted: true,
       };
 
       const [createdProfile] = await db
@@ -68,6 +67,7 @@ export const updateBusinessProfile = validatedActionWithUser(
           googleReviewUrl: data.googleReviewUrl,
           facebookReviewUrl: data.facebookReviewUrl || null,
           yelpReviewUrl: data.yelpReviewUrl || null,
+          onboardingCompleted: true,
           updatedAt: new Date(),
         })
         .where(eq(businessProfiles.userId, user.id))

@@ -5,7 +5,10 @@
       "Bash(pnpm add:*)",
       "Bash(npx shadcn@latest add tooltip dialog progress)",
       "Bash(npx tsc:*)",
-      "Bash(pnpm remove:*)"
+      "Bash(pnpm remove:*)",
+      "Bash(npx shadcn@latest add toast)",
+      "Bash(pnpm db:migrate:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []
